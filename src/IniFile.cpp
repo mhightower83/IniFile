@@ -144,13 +144,31 @@ bool IniFile::getValue(const char* section, const char* key,
   return true;
 }
 
-bool IniFile::getValue(const char* section, const char* key,	\
+bool IniFile::getValue(const char* section, const char* key,
 			  char* buffer, size_t len, uint16_t& val) const
 {
-  long longval;
+  unsigned long longval;
   bool r = getValue(section, key, buffer, len, longval);
-  if (r)
+  if (r) {
+    if (longval > 0x0FFFF)
+      r = false;
+    else
     val = uint16_t(longval);
+  }
+  return r;
+}
+
+bool IniFile::getValue(const char* section, const char* key,
+			  char* buffer, size_t len, uint8_t& val) const
+{
+  unsigned long longval;
+  bool r = getValue(section, key, buffer, len, longval);
+  if (r) {
+    if (longval > 255)
+      r = false;
+    else
+      val = uint8_t(longval);
+  }
   return r;
 }
 

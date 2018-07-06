@@ -76,10 +76,15 @@ public:
   bool getValue(const char* section, const char* key,
 		   char* buffer, size_t len, uint16_t& val) const;
 
+  // Get a uint8_t value
+  bool getValue(const char* section, const char* key,
+		   char* buffer, size_t len, uint8_t& val) const;
+
   // Get a long value
   bool getValue(const char* section, const char* key,
 		   char* buffer, size_t len, long& val) const;
 
+  // Get a unsigned long value
   bool getValue(const char* section, const char* key,
 		   char* buffer, size_t len, unsigned long& val) const;
 
