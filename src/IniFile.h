@@ -3,12 +3,30 @@
 
 #define INIFILE_VERSION "1.0.2"
 
+#if ESP8266
+#ifndef LIB_INIFILE_USE_SPIFFS
+  #if LIB_INIFILE_USE_SD_FS
+  #define LIB_INIFILE_USE_SPIFFS 0
+  #else
+  #define LIB_INIFILE_USE_SPIFFS 1
+  #endif
+#endif
+#endif
+
+#if LIB_INIFILE_USE_SPIFFS
+// Maximum length for filename, excluding NULL char, 31 chars
+// No subdirectorys. Filenames can contain slash.
+#define INI_FILE_MAX_FILENAME_LEN 31
+#include "FS.h"
+#else
 // Maximum length for filename, excluding NULL char 26 chars allows an
 // 8.3 filename instead and 8.3 directory with a leading slash
 #define INI_FILE_MAX_FILENAME_LEN 26
 
 #include "SD.h"
-#include "IPAddress.h"
+#endif
+
+#include "Ethernet.h"
 
 class IniFileState;
 
@@ -29,8 +47,13 @@ public:
   static const uint8_t maxFilenameLen;
 
   // Create an IniFile object. It isn't opened until open() is called on it.
+#if LIB_INIFILE_USE_SPIFFS
+  IniFile(const char* filename, const char * mode = "r",
+	  bool caseSensitive = false);
+#else
   IniFile(const char* filename, uint8_t mode = FILE_READ,
 	  bool caseSensitive = false);
+#endif
   ~IniFile();
 
   inline bool open(void); // Returns true if open succeeded
@@ -41,13 +64,17 @@ public:
   inline error_t getError(void) const;
   inline void clearError(void) const;
   // Get the file mode (FILE_READ/FILE_WRITE)
+#if LIB_INIFILE_USE_SPIFFS
+  inline const char * getMode(void) const;
+#else
   inline uint8_t getMode(void) const;
+#endif
 
   // Get the filename asscoiated with the ini file object
   inline const char* getFilename(void) const;
 
   bool validate(char* buffer, size_t len) const;
-  
+
   // Get value from the file, but split into many short tasks. Return
   // value: false means continue, true means stop. Call getError() to
   // find out if any error
@@ -57,7 +84,7 @@ public:
   // Get value, as one big task. Return = true means value is present
   // in buffer
   bool getValue(const char* section, const char* key,
-		  char* buffer, size_t len) const; 
+		  char* buffer, size_t len) const;
 
   // Get the value as a string, storing the result in a new buffer
   // (not the working buffer)
@@ -91,10 +118,10 @@ public:
   // Get a float value
   bool getValue(const char* section, const char* key,
 		   char* buffer, size_t len, float& val) const;
-  
+
   bool getIPAddress(const char* section, const char* key,
 		       char* buffer, size_t len, uint8_t* ip) const;
-  
+
 #if defined(ARDUINO) && ARDUINO >= 100
   bool getIPAddress(const char* section, const char* key,
 		       char* buffer, size_t len, IPAddress& ip) const;
@@ -112,23 +139,47 @@ public:
 
   bool getCaseSensitive(void) const;
   void setCaseSensitive(bool cs);
-  
+
   protected:
   // True means stop looking, false means not yet found
-  bool findSection(const char* section, char* buffer, size_t len,	
+  bool findSection(const char* section, char* buffer, size_t len,
 		      IniFileState &state) const;
   bool findKey(const char* section, const char* key, char* buffer,
 		 size_t len, char** keyptr, IniFileState &state) const;
 
 
 private:
-  char _filename[INI_FILE_MAX_FILENAME_LEN];
+  char _filename[INI_FILE_MAX_FILENAME_LEN+1];
+#if LIB_INIFILE_USE_SPIFFS
+  char _mode[3];
+#else
   uint8_t _mode;
+#endif
   mutable error_t _error;
   mutable File _file;
   bool _caseSensitive;
 };
 
+#if LIB_INIFILE_USE_SPIFFS
+bool IniFile::open(void)
+{
+  if (_file)
+    _file.close();
+  if(!SPIFFS.exists(_filename)) {
+    _error = errorFileNotFound;
+    return false;
+  }
+  _file = SPIFFS.open(_filename, _mode);
+  if (_file) {
+    _error = errorNoError;
+    return true;
+  }
+  else {
+    _error = errorFileNotFound;
+    return false;
+  }
+}
+#else
 bool IniFile::open(void)
 {
   if (_file)
@@ -143,6 +194,7 @@ bool IniFile::open(void)
     return false;
   }
 }
+#endif
 
 void IniFile::close(void)
 {
@@ -165,10 +217,17 @@ void IniFile::clearError(void) const
   _error = errorNoError;
 }
 
+#if LIB_INIFILE_USE_SPIFFS
+const char * IniFile::getMode(void) const
+{
+  return _mode;
+}
+#else
 uint8_t IniFile::getMode(void) const
 {
   return _mode;
 }
+#endif
 
 const char* IniFile::getFilename(void) const
 {
@@ -186,13 +245,12 @@ private:
 	funcFindSection,
 	funcFindKey,
   };
-	
+
   uint32_t readLinePosition;
   uint8_t getValueState;
 
   friend class IniFile;
 };
 
-  
-#endif
 
+#endif

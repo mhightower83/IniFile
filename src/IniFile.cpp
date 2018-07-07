@@ -4,6 +4,22 @@
 
 const uint8_t IniFile::maxFilenameLen = INI_FILE_MAX_FILENAME_LEN;
 
+#if LIB_INIFILE_USE_SPIFFS
+IniFile::IniFile(const char* filename, const char * mode,
+		 bool caseSensitive)
+{
+	if (strlen(mode) < sizeof(_mode))
+		strcpy(_mode, mode);
+	else
+	  _mode[0] = '\0';
+
+  if (strlen(filename) <= maxFilenameLen)
+    strcpy(_filename, filename);
+  else
+    _filename[0] = '\0';
+  _caseSensitive = caseSensitive;
+}
+#else
 IniFile::IniFile(const char* filename, uint8_t mode,
 		 bool caseSensitive)
 {
@@ -14,6 +30,7 @@ IniFile::IniFile(const char* filename, uint8_t mode,
   _mode = mode;
   _caseSensitive = caseSensitive;
 }
+#endif
 
 IniFile::~IniFile()
 {
@@ -46,14 +63,14 @@ bool IniFile::getValue(const char* section, const char* key,
     _error = errorFileNotOpen;
     return true;
   }
-  
+
   switch (state.getValueState) {
   case IniFileState::funcUnset:
     state.getValueState = (section == NULL ? IniFileState::funcFindKey
 			   : IniFileState::funcFindSection);
     state.readLinePosition = 0;
     break;
-    
+
   case IniFileState::funcFindSection:
     if (findSection(section, buffer, len, state)) {
       if (_error != errorNoError)
@@ -61,7 +78,7 @@ bool IniFile::getValue(const char* section, const char* key,
       state.getValueState = IniFileState::funcFindKey;
     }
     break;
-    
+
   case IniFileState::funcFindKey:
     char *cp;
     if (findKey(section, key, buffer, len, &cp, state)) {
@@ -78,14 +95,14 @@ bool IniFile::getValue(const char* section, const char* key,
       return true;
     }
     break;
-    
+
   default:
     // How did this happen?
     _error = errorUnknownError;
     done = true;
     break;
   }
-  
+
   return done;
 }
 
@@ -113,12 +130,12 @@ bool IniFile::getValue(const char* section, const char* key,
 
 // For true accept: true, yes, 1
  // For false accept: false, no, 0
-bool IniFile::getValue(const char* section, const char* key, 
+bool IniFile::getValue(const char* section, const char* key,
 			  char* buffer, size_t len, bool& val) const
 {
   if (!getValue(section, key, buffer, len))
     return false; // error
-  
+
   if (strcasecmp(buffer, "true") == 0 ||
       strcasecmp(buffer, "yes") == 0 ||
       strcasecmp(buffer, "1") == 0) {
@@ -131,7 +148,7 @@ bool IniFile::getValue(const char* section, const char* key,
     val = false;
     return true;
   }
-  return false; // does not match any known strings      
+  return false; // does not match any known strings
 }
 
 bool IniFile::getValue(const char* section, const char* key,
@@ -139,7 +156,7 @@ bool IniFile::getValue(const char* section, const char* key,
 {
   if (!getValue(section, key, buffer, len))
     return false; // error
-  
+
   val = atoi(buffer);
   return true;
 }
@@ -177,7 +194,7 @@ bool IniFile::getValue(const char* section, const char* key,
 {
   if (!getValue(section, key, buffer, len))
     return false; // error
-  
+
   val = atol(buffer);
   return true;
 }
@@ -198,7 +215,7 @@ bool IniFile::getValue(const char* section, const char* key,
   }
   // buffer has trailing non-numeric characters, and since the buffer
   // already had whitespace removed discard the entire results
-  return false; 
+  return false;
 }
 
 
@@ -218,7 +235,7 @@ bool IniFile::getValue(const char* section, const char* key,
   }
   // buffer has trailing non-numeric characters, and since the buffer
   // already had whitespace removed discard the entire results
-  return false; 
+  return false;
 }
 
 
@@ -298,7 +315,7 @@ bool IniFile::getMACAddress(const char* section, const char* key,
 
   if (!getValue(section, key, buffer, len))
     return false; // error
-  
+
   int i = 0;
   char* cp = buffer;
   memset(mac, 0, 6);
@@ -333,31 +350,37 @@ IniFile::error_t IniFile::readLine(File &file, char *buffer, size_t len, uint32_
 {
   if (!file)
     return errorFileNotOpen;
- 
-  if (len < 3) 
-    return errorBufferTooSmall;
 
+  if (len < 3)
+    return errorBufferTooSmall;
+#if LIB_INIFILE_USE_SPIFFS
+  if (!file.seek(pos, SeekSet))
+    return errorSeekError;
+
+  size_t bytesRead = file.read((uint8_t*)buffer, len);
+#else
   if (!file.seek(pos))
     return errorSeekError;
 
   size_t bytesRead = file.read(buffer, len);
+#endif
   if (!bytesRead) {
     buffer[0] = '\0';
     //return 1; // done
     return errorEndOfFile;
   }
-  
+
   for (size_t i = 0; i < bytesRead && i < len-1; ++i) {
     // Test for '\n' with optional '\r' too
     // if (endOfLineTest(buffer, len, i, '\n', '\r')
-	
+
     if (buffer[i] == '\n' || buffer[i] == '\r') {
       char match = buffer[i];
-      char otherNewline = (match == '\n' ? '\r' : '\n'); 
+      char otherNewline = (match == '\n' ? '\r' : '\n');
       // end of line, discard any trailing character of the other sort
       // of newline
       buffer[i] = '\0';
-      
+
       if (buffer[i+1] == otherNewline)
 	++i;
       pos += (i + 1); // skip past newline(s)
@@ -371,7 +394,7 @@ IniFile::error_t IniFile::readLine(File &file, char *buffer, size_t len, uint32_
     // return 1; //done
     return errorEndOfFile;
   }
-  
+
   buffer[len-1] = '\0'; // terminate the string
   return errorBufferTooSmall;
 }
@@ -396,7 +419,7 @@ void IniFile::removeTrailingWhiteSpace(char* str)
     *cp-- = '\0';
 }
 
-bool IniFile::findSection(const char* section, char* buffer, size_t len, 
+bool IniFile::findSection(const char* section, char* buffer, size_t len,
 			     IniFileState &state) const
 {
   if (section == NULL) {
@@ -405,13 +428,13 @@ bool IniFile::findSection(const char* section, char* buffer, size_t len,
   }
 
   error_t err = IniFile::readLine(_file, buffer, len, state.readLinePosition);
-  
+
   if (err != errorNoError && err != errorEndOfFile) {
     // Signal to caller to stop looking and any error value
     _error = err;
     return true;
   }
-    
+
   char *cp = skipWhiteSpace(buffer);
   //if (isCommentChar(*cp))
   //return (done ? errorSectionNotFound : 0);
@@ -424,7 +447,7 @@ bool IniFile::findSection(const char* section, char* buffer, size_t len,
     else
       return false; // Continue searching
   }
-  
+
   if (*cp == '[') {
     // Start of section
     ++cp;
@@ -447,14 +470,14 @@ bool IniFile::findSection(const char* section, char* buffer, size_t len,
       }
     }
   }
-  
+
   // Not a valid section line
   //return (done ? errorSectionNotFound : 0);
   if (err == errorEndOfFile) {
     _error = errorSectionNotFound;
     return true;
   }
-  
+
   return false;
 }
 
@@ -474,7 +497,7 @@ bool IniFile::findKey(const char* section, const char* key,
     _error = err;
     return true;
   }
-  
+
   char *cp = skipWhiteSpace(buffer);
   // if (isCommentChar(*cp))
   //   return (done ? errorKeyNotFound : 0);
@@ -486,13 +509,13 @@ bool IniFile::findKey(const char* section, const char* key,
     else
       return false; // Continue searching
   }
-  
+
   if (section && *cp == '[') {
     // Start of a new section
     _error = errorKeyNotFound;
     return true;
   }
-  
+
   // Find '='
   char *ep = strchr(cp, '=');
   if (ep != NULL) {
