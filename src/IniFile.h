@@ -26,7 +26,10 @@
 #include "SD.h"
 #endif
 
-#include "Ethernet.h"
+//D #include "Ethernet.h"
+//D IPAddress.h is more direct and does not try to redefine
+//D the value of UDP_TX_PACKET_MAX_SIZE
+#include "IPAddress.h"
 
 class IniFileState;
 
